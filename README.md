@@ -64,7 +64,7 @@ bash scripts/test_sandbox.sh
 Go rock 🚀
 
 ```bash
-# 在 config.yaml 中配置 base_url, 待测模型 model_id, judge 模型 model_id
+# config.yaml 已配置 openrouter base_url + anthropic/claude-opus-4.6 待测模型
 claw-eval batch --config config.yaml --sandbox --trials 3 --parallel 16
 ```
 
