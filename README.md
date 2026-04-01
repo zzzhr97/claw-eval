@@ -64,7 +64,8 @@ bash scripts/test_sandbox.sh
 Go rock 🚀
 
 ```bash
-claw-eval batch --config model_configs/claude_opus_46.yaml --sandbox --trials 3 --parallel 16
+# 在 config.yaml 中配置 base_url, 待测模型 model_id, judge 模型 model_id
+claw-eval batch --config config.yaml --sandbox --trials 3 --parallel 16
 ```
 
 ---
