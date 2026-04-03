@@ -1,0 +1,17 @@
+# Agent Eval default configuration
+
+model:
+  # OpenRouter endpoint (OpenAI-compatible)
+  api_key: abc
+  base_url: http://103.237.28.246:5555/v1
+  model_id: Qwen3.5-35B-A3B-kl
+
+judge:
+  api_key: sk-7ciTD8N2oQciG7ArZKJCwD6mjldtSmBuVPgBhHYvarJnfmcX
+  base_url: http://35.220.164.252:3888/v1
+  model_id: gemini-3-flash-preview
+  enabled: true
+
+defaults:
+  trace_dir: traces
+  tasks_dir: tasks

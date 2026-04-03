@@ -87,6 +87,13 @@ def _apply_proxy(proxy_url: str | None) -> None:
     print(f"[proxy] Model/judge traffic via {proxy_url}")
 
 
+def _set_decode_error_mode(enabled: bool) -> None:
+    """Configure judge JSON decode error handling mode via env var."""
+    os.environ["CLAW_EVAL_DECODE_ERROR_ABORT"] = "1" if enabled else "0"
+    if enabled:
+        print("[decode-error] enabled: judge decode errors will save raw response to ./tmp/*.md and continue retries")
+
+
 def _grade_with_optional_params(
     grader, messages, dispatches, task,
     *, audit_data, judge, media_events, env_snapshot=None,
@@ -275,6 +282,7 @@ def _trace_totals(end) -> dict[str, int | float]:
 def cmd_run(args: argparse.Namespace) -> None:
     """Run an agent on a task."""
     _apply_proxy(getattr(args, "proxy", None))
+    _set_decode_error_mode(getattr(args, "decode_error", False))
 
     from .config import load_config
     from .graders.registry import get_grader
@@ -510,6 +518,7 @@ def cmd_run(args: argparse.Namespace) -> None:
 def cmd_run_inner(args: argparse.Namespace) -> None:
     """Run a single trial inside a sandbox container (internal command)."""
     _apply_proxy(getattr(args, "proxy", None))
+    _set_decode_error_mode(getattr(args, "decode_error", False))
 
     from .config import load_config
     from .graders.registry import get_grader
@@ -613,6 +622,7 @@ def cmd_build_image(args: argparse.Namespace) -> None:
 def cmd_grade(args: argparse.Namespace) -> None:
     """Grade an existing trace file."""
     _apply_proxy(getattr(args, "proxy", None))
+    _set_decode_error_mode(getattr(args, "decode_error", False))
 
     from .config import load_config
     from .graders.registry import get_grader
@@ -702,6 +712,7 @@ def _run_single_task(
     proxy: str | None = None,
     sandbox: bool = False,
     sandbox_image: str | None = None,
+    decode_error: bool = False,
 ) -> dict:
     """Run a single task in a worker process. Returns a result dict."""
     # Ensure localhost bypasses proxy in worker processes.
@@ -710,6 +721,7 @@ def _run_single_task(
     # Re-apply proxy for model/judge API calls (services.py strips proxy
     # from mock-service subprocesses independently).
     _apply_proxy(proxy)
+    _set_decode_error_mode(decode_error)
 
     from .config import load_config
     from .graders.registry import get_grader
@@ -1023,6 +1035,7 @@ def _fmt_duration(seconds: float) -> str:
 def cmd_batch(args: argparse.Namespace) -> None:
     """Run all (or filtered) tasks in parallel."""
     _apply_proxy(getattr(args, "proxy", None))
+    _set_decode_error_mode(getattr(args, "decode_error", False))
 
     tasks_dir = Path(args.tasks_dir)
     if not tasks_dir.exists():
@@ -1197,6 +1210,7 @@ def cmd_batch(args: argparse.Namespace) -> None:
                 proxy=getattr(args, "proxy", None),
                 sandbox=getattr(args, "sandbox", False),
                 sandbox_image=getattr(args, "sandbox_image", None),
+                decode_error=getattr(args, "decode_error", False),
             )
             pending[fut] = (td, slot)
 
@@ -1486,6 +1500,7 @@ def main(argv: list[str] | None = None) -> None:
     p_run.add_argument("--sandbox-image", default=None, help="Override sandbox Docker image name")
     p_run.add_argument("--sandbox-tools", action="store_true", help="Inject sandbox tools (shell/file/browser) without Docker")
     p_run.add_argument("--proxy", default=None, help="HTTP proxy URL for model/judge API traffic (e.g. http://proxy:port)")
+    p_run.add_argument("--decode-error", action="store_true", help="Save judge decode-error raw responses to ./tmp/*.md and keep retries")
 
     # _run-inner (hidden — used inside sandbox containers)
     p_inner = sub.add_parser("_run-inner", help=argparse.SUPPRESS)
@@ -1499,6 +1514,7 @@ def main(argv: list[str] | None = None) -> None:
     p_inner.add_argument("--judge-model", default=None)
     p_inner.add_argument("--no-judge", action="store_true")
     p_inner.add_argument("--proxy", default=None)
+    p_inner.add_argument("--decode-error", action="store_true")
 
     # build-image
     p_build = sub.add_parser("build-image", help="Build the sandbox Docker image")
@@ -1515,6 +1531,7 @@ def main(argv: list[str] | None = None) -> None:
     p_grade.add_argument("--judge-model", default=None, help="Override judge model ID")
     p_grade.add_argument("--no-judge", action="store_true", help="Disable LLM judge for communication scoring")
     p_grade.add_argument("--proxy", default=None, help="HTTP proxy URL for judge API traffic")
+    p_grade.add_argument("--decode-error", action="store_true", help="Save judge decode-error raw responses to ./tmp/*.md and keep retries")
 
     # batch
     p_batch = sub.add_parser("batch", help="Run all tasks in parallel")
@@ -1531,6 +1548,7 @@ def main(argv: list[str] | None = None) -> None:
     p_batch.add_argument("--judge-model", default=None)
     p_batch.add_argument("--no-judge", action="store_true")
     p_batch.add_argument("--proxy", default=None, help="HTTP proxy URL for model/judge API traffic")
+    p_batch.add_argument("--decode-error", action="store_true", help="Save judge decode-error raw responses to ./tmp/*.md and keep retries")
     p_batch.add_argument("--port-base-offset", type=int, default=0, help="Base port offset to avoid conflicts when running multiple batch jobs (e.g. 400)")
     p_batch.add_argument("--sandbox", action="store_true", help="Run sandbox tools inside Docker containers")
     p_batch.add_argument("--sandbox-image", default=None, help="Override sandbox Docker image name")

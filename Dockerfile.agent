@@ -9,6 +9,7 @@ ARG http_proxy
 ARG https_proxy
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
+ARG PLAYWRIGHT_CHROMIUM_REVISION=1208
 
 WORKDIR /workspace
 
@@ -20,6 +21,7 @@ RUN sed -i 's|deb.debian.org|mirrors.ustc.edu.cn|g' /etc/apt/sources.list.d/* 2>
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ffmpeg \
         poppler-utils \
+        unzip \
     && rm -rf /var/lib/apt/lists/*
 
 # Install sandbox server dependencies (PyPI via TUNA mirror)
@@ -33,11 +35,17 @@ RUN pip install -r /tmp/requirements.txt \
 # Only copy the sandbox server (not the full claw_eval framework)
 COPY src/claw_eval/sandbox/ /opt/sandbox/
 
-# Playwright + Chromium for browser screenshot/recording support
+# Playwright + Chromium for browser screenshot/recording support.
+# Chromium is pre-downloaded on host and copied into build context to avoid slow CDN downloads in Docker.
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+COPY .docker-build/chromium-linux-arm64.zip /tmp/chromium-linux-arm64.zip
 RUN pip install playwright --no-cache-dir \
         -i https://pypi.tuna.tsinghua.edu.cn/simple \
         --trusted-host pypi.tuna.tsinghua.edu.cn \
-    && playwright install --with-deps chromium
+    && playwright install-deps chromium \
+    && mkdir -p "/ms-playwright/chromium-${PLAYWRIGHT_CHROMIUM_REVISION}" \
+    && unzip -q /tmp/chromium-linux-arm64.zip -d "/ms-playwright/chromium-${PLAYWRIGHT_CHROMIUM_REVISION}" \
+    && rm -f /tmp/chromium-linux-arm64.zip
 
 EXPOSE 8080
 ENTRYPOINT ["python", "/opt/sandbox/server.py", "--port", "8080"]

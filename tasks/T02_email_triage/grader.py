@@ -2,14 +2,48 @@
 
 import json
 import logging
+import os
 import re
 import time
 import random
+from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from claw_eval.graders.base import load_peer_grader
 
 log = logging.getLogger(__name__)
+
+
+def _decode_error_mode_enabled() -> bool:
+    """Return True when decode-error debug mode is enabled."""
+    return os.environ.get("CLAW_EVAL_DECODE_ERROR_ABORT", "").lower() in {"1", "true", "yes", "on"}
+
+
+def _save_decode_error_response(raw: str, scope: str) -> Path | None:
+    """Save unparseable judge response to ./tmp/<random>.md."""
+    try:
+        out_dir = Path("tmp")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / f"{uuid4().hex}.md"
+        content = (
+            "# Judge Decode Error\n\n"
+            f"- scope: `{scope}`\n"
+            f"- time_epoch: `{int(time.time())}`\n\n"
+            "## Raw Response\n\n"
+            "```text\n"
+            f"{raw}\n"
+            "```\n"
+        )
+        out_path.write_text(content, encoding="utf-8")
+        return out_path
+    except Exception as exc:
+        print(
+            "[judge-decode-error] failed to save decode-error response: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        return None
+
 
 _Base = load_peer_grader("T01zh_email_triage")
 
@@ -59,12 +93,19 @@ class EmailTriageGraderEN(_Base):
                     model=judge.model_id,
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.0,
-                    max_tokens=256,
+                    max_tokens=16384,
                 )
                 raw = resp.choices[0].message.content or "{}"
                 raw = re.sub(r"^```(?:json)?\s*", "", raw.strip())
                 raw = re.sub(r"\s*```$", "", raw.strip())
-                classifications = json.loads(raw)
+                try:
+                    classifications = json.loads(raw)
+                except json.JSONDecodeError:
+                    if _decode_error_mode_enabled():
+                        saved = _save_decode_error_response(raw, scope="email_triage_en")
+                        if saved is not None:
+                            print(f"[judge-decode-error] saved raw response to {saved}")
+                    raise
 
                 correct = sum(
                     1

@@ -3,3 +3,5 @@
 *
 !requirements-sandbox-server.txt
 !src/claw_eval/sandbox/
+!.docker-build/
+!.docker-build/chromium-linux-arm64.zip

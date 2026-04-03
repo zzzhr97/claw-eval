@@ -24,9 +24,9 @@ info() { echo -e "${YELLOW}[INFO]${NC} $1"; }
 # Phase 0: 安装依赖
 # ====================================================================
 info "Phase 0: 安装依赖"
-pip install -r requirements-sandbox-server.txt -q 2>&1 | tail -1
-pip install -r requirements.txt -q 2>&1 | tail -1
-pip install -e . -q 2>&1 | tail -1
+pip install -r requirements-sandbox-server.txt
+pip install -r requirements.txt
+pip install -e .
 pass "依赖安装完成"
 
 echo ""
@@ -138,9 +138,52 @@ info "Phase 2: Docker 镜像构建 + 容器冒烟测试"
 
 # 2.1 构建镜像
 info "构建 claw-eval-agent:latest ..."
-docker build -f Dockerfile.agent -t claw-eval-agent:latest . -q \
-    && pass "Docker 镜像构建成功" \
-    || fail "Docker 镜像构建失败"
+LOCAL_CHROMIUM_ZIP="${LOCAL_CHROMIUM_ZIP:-/Users/zhanghaoran/Downloads/chromium-linux-arm64.zip}"
+if [ ! -f "${LOCAL_CHROMIUM_ZIP}" ]; then
+    fail "未找到本地 Chromium zip: ${LOCAL_CHROMIUM_ZIP}"
+fi
+mkdir -p .docker-build
+cp "${LOCAL_CHROMIUM_ZIP}" .docker-build/chromium-linux-arm64.zip
+info "已使用本地 Chromium 包: ${LOCAL_CHROMIUM_ZIP}"
+
+BUILD_PROXY="${BUILD_PROXY:-off}"
+BUILD_PROXY_LC="$(printf '%s' "${BUILD_PROXY}" | tr '[:upper:]' '[:lower:]')"
+if [ "${BUILD_PROXY_LC}" = "off" ] || [ "${BUILD_PROXY_LC}" = "none" ] || [ "${BUILD_PROXY_LC}" = "direct" ]; then
+    info "Docker build 代理已关闭（直连）"
+    docker build \
+        --build-arg "PLAYWRIGHT_CHROMIUM_REVISION=${PLAYWRIGHT_CHROMIUM_REVISION:-1208}" \
+        -f Dockerfile.agent -t claw-eval-agent:latest . \
+        && pass "Docker 镜像构建成功" \
+        || fail "Docker 镜像构建失败"
+else
+    DOCKER_BUILD_PROXY="${BUILD_PROXY}"
+    # In docker build context, 127.0.0.1/localhost points to the build container, not host.
+    # For host-local proxy, map to host.docker.internal so build steps can reach it.
+    case "${BUILD_PROXY}" in
+        http://127.0.0.1:*)
+            DOCKER_BUILD_PROXY="http://host.docker.internal:${BUILD_PROXY#http://127.0.0.1:}"
+            ;;
+        http://localhost:*)
+            DOCKER_BUILD_PROXY="http://host.docker.internal:${BUILD_PROXY#http://localhost:}"
+            ;;
+        https://127.0.0.1:*)
+            DOCKER_BUILD_PROXY="https://host.docker.internal:${BUILD_PROXY#https://127.0.0.1:}"
+            ;;
+        https://localhost:*)
+            DOCKER_BUILD_PROXY="https://host.docker.internal:${BUILD_PROXY#https://localhost:}"
+            ;;
+    esac
+    info "Docker build 代理: ${BUILD_PROXY} (容器内使用: ${DOCKER_BUILD_PROXY})"
+    docker build \
+        --build-arg "http_proxy=${DOCKER_BUILD_PROXY}" \
+        --build-arg "https_proxy=${DOCKER_BUILD_PROXY}" \
+        --build-arg "HTTP_PROXY=${DOCKER_BUILD_PROXY}" \
+        --build-arg "HTTPS_PROXY=${DOCKER_BUILD_PROXY}" \
+        --build-arg "PLAYWRIGHT_CHROMIUM_REVISION=${PLAYWRIGHT_CHROMIUM_REVISION:-1208}" \
+        -f Dockerfile.agent -t claw-eval-agent:latest . \
+        && pass "Docker 镜像构建成功" \
+        || fail "Docker 镜像构建失败"
+fi
 
 # 2.2 启动容器
 CONTAINER_ID=$(docker run -d --rm -p 28080:8080 --name claw-sandbox-test claw-eval-agent:latest)
